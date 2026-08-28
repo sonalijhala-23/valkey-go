@@ -445,6 +445,11 @@ type CoreCmdable interface {
 	SearchCmdable
 }
 
+type GetToBufferCmdable interface {
+	Cmdable
+	GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd
+}
+
 type SearchCmdable interface {
 	FT_List(ctx context.Context) *StringSliceCmd
 	FTAggregate(ctx context.Context, index string, query string) *MapStringInterfaceCmd
@@ -661,7 +666,7 @@ func WithNodeScaleoutLimit(limit int) AdapterOption {
 	}
 }
 
-func NewAdapter(client valkey.Client, options ...AdapterOption) Cmdable {
+func NewAdapter(client valkey.Client, options ...AdapterOption) GetToBufferCmdable {
 	c := &Compat{client: client, maxp: runtime.GOMAXPROCS(0)}
 	for _, opt := range options {
 		opt(c)
@@ -727,6 +732,32 @@ func (c *Compat) ClientGetName(ctx context.Context) *StringCmd {
 	cmd := c.client.B().ClientGetname().Build()
 	resp := c.client.Do(ctx, cmd)
 	return newStringCmd(resp)
+}
+
+func (c *Compat) GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd {
+	cmd := &ZeroCopyStringCmd{
+		buf: buf,
+	}
+
+	stream := c.client.DoStream(
+		ctx,
+		c.client.B().Get().Key(key).Build(),
+	)
+
+	writer := &bufferWriter{
+		buf: buf,
+	}
+
+	n, err := stream.WriteTo(writer)
+	if valkey.IsValkeyNil(err) {
+		err = nil
+		n = 0
+	}
+
+	cmd.SetVal(int(n))
+	cmd.SetErr(err)
+
+	return cmd
 }
 
 func (c *Compat) Echo(ctx context.Context, message any) *StringCmd {
