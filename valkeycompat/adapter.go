@@ -30,6 +30,7 @@ import (
 	"context"
 	"encoding"
 	"fmt"
+	"io"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -117,6 +118,7 @@ type CoreCmdable interface {
 	Get(ctx context.Context, key string) *StringCmd
 	GetRange(ctx context.Context, key string, start, end int64) *StringCmd
 	GetSet(ctx context.Context, key string, value any) *StringCmd
+	GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd
 	GetEx(ctx context.Context, key string, expiration time.Duration) *StringCmd
 	GetDel(ctx context.Context, key string) *StringCmd
 	Incr(ctx context.Context, key string) *IntCmd
@@ -445,10 +447,7 @@ type CoreCmdable interface {
 	SearchCmdable
 }
 
-type GetToBufferCmdable interface {
-	Cmdable
-	GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd
-}
+
 
 type SearchCmdable interface {
 	FT_List(ctx context.Context) *StringSliceCmd
@@ -666,7 +665,7 @@ func WithNodeScaleoutLimit(limit int) AdapterOption {
 	}
 }
 
-func NewAdapter(client valkey.Client, options ...AdapterOption) GetToBufferCmdable {
+func NewAdapter(client valkey.Client, options ...AdapterOption) Cmdable {
 	c := &Compat{client: client, maxp: runtime.GOMAXPROCS(0)}
 	for _, opt := range options {
 		opt(c)
@@ -739,23 +738,25 @@ func (c *Compat) GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroC
 		buf: buf,
 	}
 
-	stream := c.client.DoStream(
-		ctx,
-		c.client.B().Get().Key(key).Build(),
-	)
+	resp := c.client.Do(ctx, c.client.B().Get().Key(key).Build())
 
-	writer := &bufferWriter{
-		buf: buf,
+	data, err := resp.AsBytes()
+	if err != nil {
+		cmd.SetErr(err)
+		return cmd
 	}
 
-	n, err := stream.WriteTo(writer)
+	
+	n := copy(buf, data)
+	cmd.SetVal(n)
 	if valkey.IsValkeyNil(err) {
 		err = nil
 		n = 0
 	}
 
-	cmd.SetVal(int(n))
-	cmd.SetErr(err)
+	if n < len(data) {
+		cmd.SetErr(io.ErrShortBuffer)
+	}
 
 	return cmd
 }
