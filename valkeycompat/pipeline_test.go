@@ -192,6 +192,7 @@ func TestPipeliner(t *testing.T) {
 		p.MGet(ctx, "1", "2")
 		p.MSet(ctx, 1, 2)
 		p.MSetNX(ctx, 1, 2)
+		p.MSetEX(ctx, MSetEXArgs{Expiration: &ExpirationOption{Mode: EX, Value: 1}}, 1, 2)
 		p.Set(ctx, "1", 2, time.Second)
 		p.SetArgs(ctx, "1", 2, SetArgs{})
 		p.SetEX(ctx, "1", 2, time.Second)
@@ -726,8 +727,9 @@ var golden = `[
     ["INCRBY","1","1"],
     ["INCRBYFLOAT","1","1"],
     ["MGET","1","2"],
-    ["MSET","1","2"],
-    ["MSETNX","1","2"],
+	["MSET","1","2"],
+	["MSETNX","1","2"],
+	["MSETEX","1","1","2","EX","1"],
     ["SET","1","2","EX","1"],
     ["SET","1","2"],
     ["SETEX","1","1","2"],
