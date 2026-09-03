@@ -39,6 +39,9 @@ import (
 	"github.com/valkey-io/valkey-go/internal/util"
 )
 
+
+var ErrLocalValidation = errors.New("valkeycompat: local validation error")
+
 type Cmder interface {
 	SetErr(error)
 	Err() error

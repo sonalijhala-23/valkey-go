@@ -1102,7 +1102,7 @@ func (c *Compat) MSetEX(ctx context.Context, args MSetEXArgs, values ...any) *In
 	// Validate even number of key-value pairs
 	if len(expandedArgs)%2 != 0 {
 		errCmd := &IntCmd{}
-		errCmd.SetErr(fmt.Errorf("MSETEX requires an even number of key/value arguments, got %d", len(expandedArgs)))
+		errCmd.SetErr(fmt.Errorf("MSETEX requires an even number of key/value arguments, got %d: %w", len(expandedArgs), ErrLocalValidation))
 		return errCmd
 	}
 
@@ -1110,9 +1110,26 @@ func (c *Compat) MSetEX(ctx context.Context, args MSetEXArgs, values ...any) *In
 
 	cmd := c.client.B().Arbitrary("MSETEX").Args(strconv.Itoa(numkeys))
 
-	// Add all key-value pairs
-	for i := 0; i < len(expandedArgs); i++ {
-		cmd = cmd.Args(str(expandedArgs[i]))
+	// Validate expiration mode early: if an Expiration was provided it must be a
+	// known, non-empty ExpirationMode. Reject unknown or empty modes so callers
+	// asking for an expiration don't accidentally create persistent keys.
+	if args.Expiration != nil {
+		switch args.Expiration.Mode {
+		case EX, PX, EXAT, PXAT, KEEPTTL:
+			// valid
+		default:
+			errCmd := &IntCmd{}
+			errCmd.SetErr(fmt.Errorf("MSETEX: invalid expiration mode: %q: %w", args.Expiration.Mode, ErrLocalValidation))
+			return errCmd
+		}
+	}
+
+	// Add all key-value pairs and register keys for proper routing in cluster mode.
+	// Use Keys(...) to mark key positions and Args(...) for the corresponding values.
+	for i := 0; i < len(expandedArgs); i += 2 {
+		keyArg := str(expandedArgs[i])
+		valArg := str(expandedArgs[i+1])
+		cmd = cmd.Keys(keyArg).Args(valArg)
 	}
 
 	// Add condition (NX or XX)

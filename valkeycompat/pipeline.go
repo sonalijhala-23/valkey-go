@@ -430,7 +430,9 @@ func (c *Pipeline) MSetNX(ctx context.Context, values ...any) *BoolCmd {
 
 func (c *Pipeline) MSetEX(ctx context.Context, args MSetEXArgs, values ...any) *IntCmd {
 	ret := c.comp.MSetEX(ctx, args, values...)
-	c.rets = append(c.rets, ret)
+	if !errors.Is(ret.Err(), ErrLocalValidation) {
+		c.rets = append(c.rets, ret)
+	}
 	return ret
 }
 
