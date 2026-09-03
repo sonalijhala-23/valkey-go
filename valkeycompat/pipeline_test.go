@@ -1164,3 +1164,14 @@ var golden = `[
     ["CLUSTER","MYSHARDID"],
     ["MODULE","LOADEX","/","CONFIG","k","v","ARGS","1","2"]
 ]`
+
+func TestPipelineClusterScanIteratorPanic(t *testing.T) {
+	p := &Pipeline{}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on ClusterScanIterator")
+		}
+	}()
+	p.ClusterScanIterator(ctx, ClusterScanOptions{})
+}
+

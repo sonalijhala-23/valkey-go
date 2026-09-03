@@ -238,6 +238,135 @@ func testCluster(resp3 bool) {
 		It("ClusterSlaves", func() {
 			Expect(adapter.ClusterSlaves(ctx, "1").Err()).To(MatchError("Unknown node 1"))
 		})
+
+		It("should ClusterScan", func() {
+			cmd := adapter.ClusterScan(ctx, "0", "", 0, "", -1)
+
+			keys, cursor, err := cmd.Result()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(keys).NotTo(BeNil())
+			Expect(cursor).NotTo(BeEmpty())
+		})
+
+		It("should ClusterScan with MATCH", func() {
+			cmd := adapter.ClusterScan(ctx, "0", "user:*", 0, "", -1)
+
+			keys, cursor, err := cmd.Result()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(keys).NotTo(BeNil())
+			Expect(cursor).NotTo(BeEmpty())
+		})
+
+		It("should ClusterScan with COUNT", func() {
+			cmd := adapter.ClusterScan(ctx, "0", "", 100, "", -1)
+
+			keys, cursor, err := cmd.Result()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(keys).NotTo(BeNil())
+			Expect(cursor).NotTo(BeEmpty())
+		})
+
+		It("should ClusterScan with TYPE", func() {
+			cmd := adapter.ClusterScan(ctx, "0", "", 0, "string", -1)
+
+			keys, cursor, err := cmd.Result()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(keys).NotTo(BeNil())
+			Expect(cursor).NotTo(BeEmpty())
+		})
+
+		It("should ClusterScan with SLOT", func() {
+			cmd := adapter.ClusterScan(ctx, "0", "", 0, "", 5000)
+
+			keys, cursor, err := cmd.Result()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(keys).NotTo(BeNil())
+			Expect(cursor).NotTo(BeEmpty())
+		})
+
+		It("should not add SLOT for continuation cursor", func() {
+			cmd := adapter.ClusterScan(
+				ctx,
+				"0-{06S}-0",
+				"",
+				100,
+				"",
+				5000,
+			)
+
+			keys, cursor, err := cmd.Result()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(keys).NotTo(BeNil())
+			Expect(cursor).NotTo(BeEmpty())
+		})
+		It("should ClusterScanIterator", func() {
+			iter := adapter.ClusterScanIterator(ctx, ClusterScanOptions{
+				Count: 100,
+			})
+
+			count := 0
+
+			for iter.Next(ctx) {
+				Expect(iter.Key()).NotTo(BeEmpty())
+				Expect(iter.Val()).To(Equal(iter.Key()))
+				count++
+			}
+
+			Expect(iter.Err()).NotTo(HaveOccurred())
+			Expect(count).To(BeNumerically(">", 0))
+		})
+
+		It("should ClusterScanIterator with MATCH", func() {
+			iter := adapter.ClusterScanIterator(ctx, ClusterScanOptions{
+				Match: "user:*",
+				Count: 100,
+			})
+
+			for iter.Next(ctx) {
+				Expect(iter.Key()).To(HavePrefix("user:"))
+			}
+
+			Expect(iter.Err()).NotTo(HaveOccurred())
+		})
+
+		It("should ClusterScanIterator with SLOT", func() {
+			s0 := int64(0)
+			iter := adapter.ClusterScanIterator(ctx, ClusterScanOptions{
+				Count: 100,
+				Slot:  &s0,
+			})
+
+			for iter.Next(ctx) {
+				Expect(iter.Key()).NotTo(BeEmpty())
+			}
+
+			Expect(iter.Err()).NotTo(HaveOccurred())
+		})
+
+		It("should stop ClusterScanIterator when context is cancelled", func() {
+			cancelCtx, cancel := context.WithCancel(ctx)
+			cancel()
+
+			iter := adapter.ClusterScanIterator(cancelCtx, ClusterScanOptions{
+				Count: 100,
+			})
+
+			Expect(iter.Next(cancelCtx)).To(BeFalse())
+			Expect(iter.Err()).To(Equal(context.Canceled))
+		})
+
+		It("should panic when ClusterScanIterator is called on Pipeline", func() {
+			pipe := adapter.Pipeline()
+			Expect(func() {
+				pipe.ClusterScanIterator(ctx, ClusterScanOptions{})
+			}).To(Panic())
+		})
 	})
 }
 
@@ -272,7 +401,7 @@ func testAdapter(resp3 bool) {
 		It("should Migrate", func() {
 			var r *StatusCmd
 			if resp3 {
-				r = adapter.Migrate(ctx, "127.0.0.1", 6378, "nonkey", 0, 1)
+				r = adapter.Migrate(ctx, "127.0.0.1", 6379, "nonkey", 0, 1)
 			} else {
 				r = adapter.Migrate(ctx, "127.0.0.1", 6356, "nonkey", 0, 1)
 			}

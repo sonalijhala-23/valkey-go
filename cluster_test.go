@@ -1861,6 +1861,122 @@ func TestClusterClient(t *testing.T) {
 		}
 	})
 
+	t.Run("CLUSTERSCAN cursor routing", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			cmd      []string
+			wantSlot uint16
+			wantOk   bool
+		}{
+			{
+				name:     "continuation cursor with valid slot tag",
+				cmd:      []string{"CLUSTERSCAN", "0-{06S}-0"},
+				wantSlot: cmds.Slot("{06S}"),
+				wantOk:   true,
+			},
+			{
+				name:     "continuation cursor with case-insensitive command",
+				cmd:      []string{"clusterscan", "0-{06S}-0"},
+				wantSlot: cmds.Slot("{06S}"),
+				wantOk:   true,
+			},
+			{
+				name:     "cursor 0 with SLOT option",
+				cmd:      []string{"CLUSTERSCAN", "0", "SLOT", "5000"},
+				wantSlot: 5000,
+				wantOk:   true,
+			},
+			{
+				name:     "cursor 0 with MATCH and SLOT option",
+				cmd:      []string{"CLUSTERSCAN", "0", "MATCH", "user:*", "COUNT", "100", "SLOT", "1234"},
+				wantSlot: 1234,
+				wantOk:   true,
+			},
+			{
+				name:     "cursor 0 with MATCH pattern named SLOT",
+				cmd:      []string{"CLUSTERSCAN", "0", "MATCH", "SLOT", "COUNT", "100", "SLOT", "999"},
+				wantSlot: 999,
+				wantOk:   true,
+			},
+			{
+				name:     "cursor 0 with out of range SLOT",
+				cmd:      []string{"CLUSTERSCAN", "0", "SLOT", "16384"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "cursor 0 with invalid SLOT string",
+				cmd:      []string{"CLUSTERSCAN", "0", "SLOT", "notanumber"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "cursor 0 without SLOT option",
+				cmd:      []string{"CLUSTERSCAN", "0"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "cursor 0 without SLOT value",
+				cmd:      []string{"CLUSTERSCAN", "0", "SLOT"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "cursor without curly braces",
+				cmd:      []string{"CLUSTERSCAN", "0-no-tag-0"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "cursor with empty curly braces",
+				cmd:      []string{"CLUSTERSCAN", "0-{}-0"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "cursor with unclosed curly brace",
+				cmd:      []string{"CLUSTERSCAN", "0-{unclosed-0"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "non-clusterscan command",
+				cmd:      []string{"GET", "foo"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "insufficient arguments",
+				cmd:      []string{"CLUSTERSCAN"},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+			{
+				name:     "empty command",
+				cmd:      []string{},
+				wantSlot: cmds.InitSlot,
+				wantOk:   false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var c Completed
+				if len(tt.cmd) > 0 {
+					c = client.B().Arbitrary(tt.cmd...).Build()
+				}
+				slot, ok := clusterScanSlot(c)
+				if ok != tt.wantOk {
+					t.Fatalf("clusterScanSlot() ok = %v, want %v", ok, tt.wantOk)
+				}
+				if slot != tt.wantSlot {
+					t.Fatalf("clusterScanSlot() slot = %v, want %v", slot, tt.wantSlot)
+				}
+			})
+		}
+	})
+
 	t.Run("Delegate DoMulti Cross Slot + Init Slot", func(t *testing.T) {
 		defer func() {
 			if err := recover(); err != panicMixCxSlot {

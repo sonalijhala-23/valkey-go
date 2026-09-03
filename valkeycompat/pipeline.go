@@ -110,6 +110,26 @@ func (c *Pipeline) CommandGetKeys(ctx context.Context, commands ...any) *StringS
 	return ret
 }
 
+func (c *Pipeline) ClusterScan(
+	ctx context.Context,
+	cursor string,
+	match string,
+	count int64,
+	keyType string,
+	slot int64,
+) *ClusterScanCmd {
+	ret := c.comp.ClusterScan(ctx, cursor, match, count, keyType, slot)
+	c.rets = append(c.rets, ret)
+	return ret
+}
+
+func (c *Pipeline) ClusterScanIterator(
+	ctx context.Context,
+	opts ClusterScanOptions,
+) *ClusterScanIterator {
+	panic("ClusterScanIterator is not supported in Pipeline")
+}
+
 func (c *Pipeline) CommandGetKeysAndFlags(ctx context.Context, commands ...any) *KeyFlagsCmd {
 	ret := c.comp.CommandGetKeysAndFlags(ctx, commands...)
 	c.rets = append(c.rets, ret)

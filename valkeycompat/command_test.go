@@ -380,6 +380,29 @@ var _ = Describe("Commands", func() {
 			Expect(cmd.Err().Error()).To(Equal("invalid error"))
 		}
 		{
+			cmd := &ClusterScanCmd{}
+			cmd.SetVal([]string{"1"}, "0-{06S}-0")
+			keys, cursor := cmd.Val()
+			Expect(keys).To(Equal([]string{"1"}))
+			Expect(cursor).To(Equal("0-{06S}-0"))
+			Expect(cmd.Err()).To(BeNil())
+			keys, cursor, err := cmd.Result()
+			Expect(keys).To(Equal([]string{"1"}))
+			Expect(cursor).To(Equal("0-{06S}-0"))
+			Expect(err).To(BeNil())
+		}
+		{
+			cmd := &ClusterScanCmd{}
+			cmd.SetErr(errors.New("invalid error"))
+			cmd.SetVal([]string{"1"}, "0-{06S}-0")
+			keys, cursor := cmd.Val()
+			Expect(keys).To(Equal([]string{"1"}))
+			Expect(cursor).To(Equal("0-{06S}-0"))
+			Expect(cmd.Err().Error()).To(Equal("invalid error"))
+			_, _, err := cmd.Result()
+			Expect(err.Error()).To(Equal("invalid error"))
+		}
+		{
 			cmd := &ZSliceCmd{}
 			cmd.SetVal([]Z{{Score: 1}})
 			Expect(cmd.Val()).To(Equal([]Z{{Score: 1}}))

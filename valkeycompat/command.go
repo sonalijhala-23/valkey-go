@@ -27,6 +27,7 @@
 package valkeycompat
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -766,6 +767,196 @@ func (cmd *ScanCmd) Err() error {
 }
 
 func (cmd *ScanCmd) Result() (keys []string, cursor uint64, err error) {
+	return cmd.keys, cmd.cursor, cmd.err
+}
+
+type ClusterScanCmd struct {
+	err    error
+	keys   []string
+	cursor string
+}
+
+type ClusterScanOptions struct {
+	Match string
+	Count int64
+	Type  string
+	Slot  *int64 // Optional: restrict scan to a specific slot (0-16383). nil means all slots across the cluster.
+}
+
+type ClusterScanIterator struct {
+	client  Cmdable
+	ctx     context.Context
+	options ClusterScanOptions
+
+	cursor string
+	keys   []string
+	index  int
+
+	err     error
+	done    bool
+	initial bool
+}
+
+func newClusterScanIterator(
+	ctx context.Context,
+	client Cmdable,
+	opts ClusterScanOptions,
+) *ClusterScanIterator {
+	return &ClusterScanIterator{
+		client:  client,
+		ctx:     ctx,
+		options: opts,
+		cursor:  "0",
+		initial: true,
+	}
+}
+
+// Next advances the iterator to the next key.
+//
+// Next is not safe for concurrent use.
+func (it *ClusterScanIterator) Next(ctx context.Context) bool {
+	if it.err != nil || it.done {
+		return false
+	}
+
+	if ctx == nil {
+		ctx = it.ctx
+	}
+
+	if err := ctx.Err(); err != nil {
+		it.err = err
+		return false
+	}
+
+	for {
+		if it.index < len(it.keys) {
+			it.index++
+			return true
+		}
+
+		it.keys = nil
+		it.index = 0
+
+		if !it.initial && it.cursor == "0" {
+			it.done = true
+			return false
+		}
+
+		if err := ctx.Err(); err != nil {
+			it.err = err
+			return false
+		}
+
+		slot := int64(-1)
+
+		// SLOT is only sent on the initial request.
+		if it.initial && it.options.Slot != nil {
+			slot = *it.options.Slot
+		}
+
+		cmd := it.client.ClusterScan(
+			ctx,
+			it.cursor,
+			it.options.Match,
+			it.options.Count,
+			it.options.Type,
+			slot,
+		)
+
+		keys, cursor, err := cmd.Result()
+		if err != nil {
+			it.err = err
+			return false
+		}
+
+		it.keys = keys
+		it.cursor = cursor
+		it.index = 0
+		it.initial = false
+
+		// Empty result does not mean the scan is complete.
+		if len(it.keys) == 0 {
+			if it.cursor == "0" {
+				it.done = true
+				return false
+			}
+
+			continue
+		}
+	}
+}
+
+// Key returns the current key.
+func (it *ClusterScanIterator) Key() string {
+	if it.index == 0 || it.index > len(it.keys) {
+		return ""
+	}
+
+	return it.keys[it.index-1]
+}
+
+// Val returns the current key, provided for go-redis compatibility.
+func (it *ClusterScanIterator) Val() string {
+	return it.Key()
+}
+
+// Err returns the error encountered by the iterator.
+func (it *ClusterScanIterator) Err() error {
+	return it.err
+}
+
+func (cmd *ClusterScanCmd) from(res valkey.ValkeyResult) {
+	arr, err := res.ToArray()
+	if err != nil {
+		cmd.err = err
+		return
+	}
+
+	if len(arr) != 2 {
+		cmd.err = fmt.Errorf(
+			"valkey: CLUSTERSCAN response has %d elements, expected 2",
+			len(arr),
+		)
+		return
+	}
+
+	cmd.cursor, err = arr[0].ToString()
+	if err != nil {
+		cmd.err = err
+		return
+	}
+
+	cmd.keys, err = arr[1].AsStrSlice()
+	if err != nil {
+		cmd.err = err
+		return
+	}
+}
+
+func newClusterScanCmd(res valkey.ValkeyResult) *ClusterScanCmd {
+	cmd := &ClusterScanCmd{}
+	cmd.from(res)
+	return cmd
+}
+
+func (cmd *ClusterScanCmd) SetVal(keys []string, cursor string) {
+	cmd.keys = keys
+	cmd.cursor = cursor
+}
+
+func (cmd *ClusterScanCmd) Val() (keys []string, cursor string) {
+	return cmd.keys, cmd.cursor
+}
+
+func (cmd *ClusterScanCmd) SetErr(err error) {
+	cmd.err = err
+}
+
+func (cmd *ClusterScanCmd) Err() error {
+	return cmd.err
+}
+
+func (cmd *ClusterScanCmd) Result() (keys []string, cursor string, err error) {
 	return cmd.keys, cmd.cursor, cmd.err
 }
 

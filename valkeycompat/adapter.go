@@ -53,6 +53,7 @@ var Nil = valkey.Nil
 
 type Cmdable interface {
 	CoreCmdable
+	ClusterScanCmdable
 	Cache(ttl time.Duration) CacheCompat
 
 	Subscribe(ctx context.Context, channels ...string) PubSub
@@ -443,6 +444,21 @@ type CoreCmdable interface {
 	TimeseriesCmdable
 	JSONCmdable
 	SearchCmdable
+}
+
+type ClusterScanCmdable interface {
+	ClusterScan(
+		ctx context.Context,
+		cursor string,
+		match string,
+		count int64,
+		keyType string,
+		slot int64,
+	) *ClusterScanCmd
+	ClusterScanIterator(
+		ctx context.Context,
+		opts ClusterScanOptions,
+	) *ClusterScanIterator
 }
 
 type SearchCmdable interface {
@@ -1313,6 +1329,45 @@ func (c *Compat) Scan(ctx context.Context, cursor uint64, match string, count in
 	}
 	resp := c.client.Do(ctx, cmd.ReadOnly())
 	return newScanCmd(resp)
+}
+
+func (c *Compat) ClusterScan(
+	ctx context.Context,
+	cursor string,
+	match string,
+	count int64,
+	keyType string,
+	slot int64,
+) *ClusterScanCmd {
+	cmd := c.client.B().Arbitrary("CLUSTERSCAN").Args(cursor)
+
+	if match != "" {
+		cmd = cmd.Args("MATCH", match)
+	}
+
+	if count > 0 {
+		cmd = cmd.Args("COUNT", strconv.FormatInt(count, 10))
+	}
+
+	if keyType != "" {
+		cmd = cmd.Args("TYPE", keyType)
+	}
+
+	// SLOT is used only for the initial request.
+	// Continuation requests must be routed using the cursor.
+	if cursor == "0" && slot >= 0 {
+		cmd = cmd.Args("SLOT", strconv.FormatInt(slot, 10))
+	}
+
+	resp := c.client.Do(ctx, cmd.Build())
+	return newClusterScanCmd(resp)
+}
+
+func (c *Compat) ClusterScanIterator(
+	ctx context.Context,
+	opts ClusterScanOptions,
+) *ClusterScanIterator {
+	return newClusterScanIterator(ctx, c, opts)
 }
 
 func (c *Compat) ScanType(ctx context.Context, cursor uint64, match string, count int64, keyType string) *ScanCmd {
