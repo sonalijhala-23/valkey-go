@@ -361,6 +361,25 @@ type StringCmd struct {
 	baseCmd[string]
 }
 
+type ZeroCopyStringCmd struct {
+	baseCmd[int]
+	buf []byte
+}
+
+func (cmd *ZeroCopyStringCmd) Bytes() []byte {
+	n := cmd.Val()
+
+	if n <= 0 {
+		return cmd.buf[:0]
+	}
+
+	if n > len(cmd.buf) {
+		n = len(cmd.buf)
+	}
+
+	return cmd.buf[:n]
+}
+
 func (cmd *StringCmd) from(res valkey.ValkeyResult) {
 	val, err := res.ToString()
 	cmd.SetErr(err)
