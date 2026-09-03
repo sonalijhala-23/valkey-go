@@ -1099,6 +1099,13 @@ func (c *Compat) MSetNX(ctx context.Context, values ...any) *BoolCmd {
 func (c *Compat) MSetEX(ctx context.Context, args MSetEXArgs, values ...any) *IntCmd {
 	expandedArgs := argsToSlice(values)
 
+	// Validate there is at least one key/value pair
+	if len(expandedArgs) == 0 {
+		errCmd := &IntCmd{}
+		errCmd.SetErr(fmt.Errorf("MSETEX requires at least one key/value pair: %w", ErrLocalValidation))
+		return errCmd
+	}
+
 	// Validate even number of key-value pairs
 	if len(expandedArgs)%2 != 0 {
 		errCmd := &IntCmd{}

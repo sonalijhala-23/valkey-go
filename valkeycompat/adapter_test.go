@@ -29,6 +29,7 @@ package valkeycompat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -2482,6 +2483,23 @@ func testAdapter(resp3 bool) {
 				Expect(replace.Val()).To(Equal(int64(1)))
 			})
 		}
+	})
+
+	It("should MSetEX reject empty values", func() {
+		mSetEX := adapter.MSetEX(ctx, MSetEXArgs{
+			Expiration: &ExpirationOption{Mode: EX, Value: 10},
+		})
+		Expect(mSetEX.Err()).To(HaveOccurred())
+		Expect(errors.Is(mSetEX.Err(), ErrLocalValidation)).To(BeTrue())
+	})
+
+	It("should MSetEX reject empty map", func() {
+		empty := map[string]string{}
+		mSetEX := adapter.MSetEX(ctx, MSetEXArgs{
+			Expiration: &ExpirationOption{Mode: EX, Value: 10},
+		}, empty)
+		Expect(mSetEX.Err()).To(HaveOccurred())
+		Expect(errors.Is(mSetEX.Err(), ErrLocalValidation)).To(BeTrue())
 	})
 
 	Describe("ACL", func() {
